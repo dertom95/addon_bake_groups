@@ -142,7 +142,7 @@ class AtlasData(bpy.types.PropertyGroup):
 ###################
 # atlas group items (object/uv)
 ###################
-class UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
+class SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
     """Atlasgroup UIList."""
 
     def draw_item(self, context, layout, data, item, icon, active_data,active_propname, index):
@@ -155,9 +155,9 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
                     row.label(text="no uvmaps",icon="ERROR")
                 else:
                     if item.atlas_uv:
-                        row.prop(item,"atlas_uv",text="uv")
+                        row.prop(item,"atlas_uv",text="bake uv")
                     else:
-                        row.prop(item,"atlas_uv",text="uv",icon="ERROR")
+                        row.prop(item,"atlas_uv",text="bake uv",icon="ERROR")
                 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -436,7 +436,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
 
             if atlas_group.show_details:
                 row = box.row()
-                row.template_list("UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM","The_list",atlas_group,"atlas_items",atlas_group,"selection_idx")
+                row.template_list("SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM","The_list",atlas_group,"atlas_items",atlas_group,"selection_idx")
                 row = box.row()
                 row.operator('simpleatlas.create_group_item', text='add object').atlas_group_idx=idx
                 row.operator('simpleatlas.delete_group_item', text='del').atlas_group_idx=idx
@@ -446,7 +446,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 bake_item_idx=0
                 for bake_item in atlas_group.bake_items:
                     row = box.row()
-                    row.prop(bake_item,"bake_type")
+                    row.prop(bake_item,"bake_type",text="bake type")
                     if bake_item.image:
                         row.prop(bake_item,"image")
                     else:
@@ -508,11 +508,6 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row.operator('simpleatlas.create_bake_item', text='add bake-type').atlas_group_idx=idx
 
 
-                #row.prop(atlas_group,"diffuse")
-                #row = box.row()
-                #row.prop(atlas_group,"normal")
-
-
             idx = idx + 1
             if atlas_group.show_details:
                 layout.separator()
@@ -530,7 +525,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
 
 classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
-            ,UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
+            ,SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
             # bake item
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE
             # group
