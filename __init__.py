@@ -190,6 +190,26 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE(bpy.types.Operator):
         group.selection_idx = min(max(0, index - 1), len(group.atlas_items) - 1)
         return{'FINISHED'}
 
+class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_SELECT(bpy.types.Operator):
+    """Add a new item to the list."""
+
+    bl_idname = "simpleatlas.select_group_item"
+    bl_label = "Add a new atlas group"
+
+    atlas_group_idx : bpy.props.IntProperty()
+
+    def execute(self, context):
+        group = context.scene.world.atlasSettings.atlas_groups[self.atlas_group_idx]
+        index = group.selection_idx
+        item = group.atlas_items[index]
+
+        # force object mode
+        item.obj.select_set(state=True)
+        bpy.ops.object.editmode_toggle()
+        bpy.ops.object.editmode_toggle()
+
+        return{'FINISHED'}        
+
 ############################################
 # atlas group bake items (bake type, bake to image)
 ###########################################
@@ -261,7 +281,7 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPS_MOVE(bpy.types.Operator):
 
     direction : bpy.props.EnumProperty(items=(('UP', 'Up', ""),
                                               ('DOWN', 'Down', ""),))
-    index : bpy.props.IntProperty()                                            
+    index : bpy.props.IntProperty()
 
     @classmethod
     def poll(cls, context):
@@ -285,6 +305,7 @@ class BakeAll(bpy.types.Operator):
 
     # -1 = all
     atlasid : bpy.props.IntProperty(default=-1)
+    only_select : bpy.props.BoolProperty(default=False)
 
     @classmethod
     def poll(cls, context):
@@ -321,7 +342,7 @@ class BakeAll(bpy.types.Operator):
             item.obj.data.uv_layers.active_index = int(item.atlas_uv)
 
             for mat_slot in item.obj.material_slots:
-                if mat_slot.material in handled_materials:
+                if mat_slot.material in handled_materials or self.only_select:
                     continue
 
                 mat = mat_slot.material
@@ -337,6 +358,11 @@ class BakeAll(bpy.types.Operator):
                 
                 nodes.active=imageTexNode
                 created_nodes.append(imageTexNode)
+
+        if self.only_select:
+            # we only want to select all objects and its bake-uvs
+            return
+
 
         # iterate over all bake-items and bake them
         for bake_item in atlasgroup.bake_items:
@@ -420,7 +446,13 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
 
             row.prop(atlas_group,"show_details",text="details",toggle=True)
 
-            row.operator('simpleatlas.bake',text="bake").atlasid=idx
+            bakeop = row.operator('simpleatlas.bake',text="select")
+            bakeop.atlasid=idx
+            bakeop.only_select=True
+
+            bakeop = row.operator('simpleatlas.bake',text="bake")
+            bakeop.atlasid=idx
+            bakeop.only_select=False
 
             op = row.operator('simpleatlas.move_group',text="",icon="TRIA_UP")
             op.direction='UP'
@@ -438,8 +470,9 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row = box.row()
                 row.template_list("SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM","The_list",atlas_group,"atlas_items",atlas_group,"selection_idx")
                 row = box.row()
-                row.operator('simpleatlas.create_group_item', text='add object').atlas_group_idx=idx
-                row.operator('simpleatlas.delete_group_item', text='del').atlas_group_idx=idx
+                row.operator('simpleatlas.create_group_item', text='add obj').atlas_group_idx=idx
+                row.operator('simpleatlas.delete_group_item', text='del obj').atlas_group_idx=idx
+                row.operator('simpleatlas.select_group_item', text='select obj').atlas_group_idx=idx
                 box.separator()
 
                 #row = layout.row()
@@ -521,11 +554,14 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         row.operator('simpleatlas.create_group', text='new bake group',icon="MONKEY")
 
         row = box.row()
-        row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE").atlasid=-1
+        bakeop = row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE")
+        bakeop.atlasid=-1
+        bakeop.only_select=False
+        
 
 classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
-            ,SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
+            ,SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_SELECT
             # bake item
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE
             # group
