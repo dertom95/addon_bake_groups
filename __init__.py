@@ -39,13 +39,21 @@ class AtlasGroupItem(bpy.types.PropertyGroup):
     obj : bpy.props.PointerProperty(type=bpy.types.Object,poll=mesh_object_poll)
     atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback, description="UVMap used for baking")
 
+bake_types = [(bt,bt,bt) for bt in ['COMBINED', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']]
+
+class AtlasGroupBakeItem(bpy.types.PropertyGroup):
+    bake_type : bpy.props.EnumProperty(items=bake_types)
+    image : bpy.props.PointerProperty(type=bpy.types.Image)
+
 class AtlasGroup(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(default="noname")
     show_details : bpy.props.BoolProperty()
     atlas_items : bpy.props.CollectionProperty(type=AtlasGroupItem)
-    diffuse : bpy.props.PointerProperty(type=bpy.types.Image)
-    normal : bpy.props.PointerProperty(type=bpy.types.Image)
+    bake_items: bpy.props.CollectionProperty(type=AtlasGroupBakeItem)
+    #diffuse : bpy.props.PointerProperty(type=bpy.types.Image)
+    #normal : bpy.props.PointerProperty(type=bpy.types.Image)
     selection_idx : bpy.props.IntProperty()
+    bake_selection_idx : bpy.props.IntProperty()
 
 class AtlasData(bpy.types.PropertyGroup):
     atlas_groups : bpy.props.CollectionProperty(type=AtlasGroup)
@@ -56,15 +64,13 @@ class AtlasData(bpy.types.PropertyGroup):
 ##              Atlas-Group
 ##############################################
 
-#######
-# items
-#######
+###################
+# atlas group items (object/uv)
+###################
 class UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
     """Atlasgroup UIList."""
 
     def draw_item(self, context, layout, data, item, icon, active_data,active_propname, index):
-        custom_icon = 'NODETREE' # TODO
-
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row()
             row.prop(item,"obj")
@@ -80,7 +86,7 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
                 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
-            layout.label(text="", icon = custom_icon)
+            layout.label(text=item.obj.name)
 
 class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE(bpy.types.Operator):
     """Add a new item to the list."""
@@ -108,6 +114,36 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE(bpy.types.Operator):
         group.atlas_items.remove(index)
         group.selection_idx = min(max(0, index - 1), len(group.atlas_items) - 1)
         return{'FINISHED'}
+
+############################################
+# atlas group bake items (bake type, bake to image)
+###########################################
+class UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE(bpy.types.Operator):
+    """Add a new item to the list."""
+
+    bl_idname = "simpleatlas.create_bake_item"
+    bl_label = "Add a new atlas group"
+
+    atlas_group_idx : bpy.props.IntProperty()
+
+    def execute(self, context):
+        context.scene.world.atlasSettings.atlas_groups[self.atlas_group_idx].bake_items.add()
+        return{'FINISHED'}
+
+class UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE(bpy.types.Operator):
+    """Add a new item to the list."""
+
+    bl_idname = "simpleatlas.delete_bake_item"
+    bl_label = "Add a new atlas group"
+
+    atlas_group_idx : bpy.props.IntProperty()
+    index : bpy.props.IntProperty()
+
+    def execute(self, context):
+        group = context.scene.world.atlasSettings.atlas_groups[self.atlas_group_idx]
+        group.bake_items.remove(self.index)
+        return{'FINISHED'}
+
 
 ########
 # groups
@@ -181,8 +217,8 @@ class BakeAll(bpy.types.Operator):
 
     def bake(self,context,atlasgroup):
 
-        if (not atlasgroup.diffuse and not atlasgroup.normal):
-            print("atlas group:%s had neither diffuse nor normal-images set! Skipping")
+        if len(atlasgroup.bake_items)==0:
+            print("atlas group:%s NO bake-elements")
             return
 
         # keep track of materials in which we set an image-texture
@@ -190,6 +226,8 @@ class BakeAll(bpy.types.Operator):
 
         created_nodes = []
 
+        # force object mode
+        bpy.ops.object.mode_set(mode="OBJECT",toggle=False)        
         # deselect all objects
         bpy.ops.object.select_all(action='DESELECT')
 
@@ -199,6 +237,7 @@ class BakeAll(bpy.types.Operator):
 
             if not item.atlas_uv or len(item.obj.data.uv_layers)==0:
                 print("Object %s has not uvlayers set" % item.obj.name)
+                continue
 
             # select the object
             item.obj.select_set(state=True)
@@ -224,29 +263,21 @@ class BakeAll(bpy.types.Operator):
                 nodes.active=imageTexNode
                 created_nodes.append(imageTexNode)
 
-        if atlasgroup.diffuse:
-            # bake diffuse
+        # iterate over all bake-items and bake them
+        for bake_item in atlasgroup.bake_items:
+            if not bake_item.image:
+                print("no image for bake_type:%s" % bake_item.bake_type)
+                continue
 
-            # set bake-mode to diffuse
-            bpy.context.scene.cycles.bake_type = 'DIFFUSE'
-            # set the diffuse texture to all temp-imageTexNodes
+            # set the texture to all temp-imageTexNodes
             for imgTexNode in created_nodes:
-                imgTexNode.image = atlasgroup.diffuse
+                imgTexNode.image = bake_item.image
             
             # bake
-            #bpy.ops.object.bake()
+            print("bake %s" % bake_item.bake_type)
+            bpy.ops.object.bake(type=bake_item.bake_type)
 
-#             bpy.ops.object.bake('INVOKE_DEFAULT',type="DIFFUSE")
-            bpy.ops.object.bake(type="DIFFUSE")
 
-        if atlasgroup.normal:
-            # bake diffuse
-
-            # set the diffuse texture to all temp-imageTexNodes
-            for imgTexNode in created_nodes:
-                imgTexNode.image = atlasgroup.normal
-            
-            bpy.ops.object.bake(type="NORMAL")
 
 
         # cleanup
@@ -293,14 +324,19 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         idx = 0
         for atlas_group in settings.atlas_groups:
             box = layout.box()
-
-            row = box.row()
+            
             if atlas_group.show_details:
+                row = box.row()
+                row.label(text="Bake Atlas")
+                row = box.row()
                 row.prop(atlas_group,"name")
             else:
+                row = box.row()
                 row.label(text=atlas_group.name)
 
             row.prop(atlas_group,"show_details",text="details")
+
+            row.operator('simpleatlas.bake',text="bake").atlasid=idx
 
             op = row.operator('simpleatlas.move_group',text="",icon="TRIA_UP")
             op.direction='UP'
@@ -313,23 +349,43 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 op = row.operator('simpleatlas.delete_group', text='',icon="X")
                 op.index=idx
 
+
             if atlas_group.show_details:
                 row = box.row()
                 row.template_list("UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM","The_list",atlas_group,"atlas_items",atlas_group,"selection_idx")
                 row = box.row()
-                row.operator('simpleatlas.create_group_item', text='NEW').atlas_group_idx=idx
-                row.operator('simpleatlas.delete_group_item', text='DEL').atlas_group_idx=idx
+                row.operator('simpleatlas.create_group_item', text='add object').atlas_group_idx=idx
+                row.operator('simpleatlas.delete_group_item', text='del').atlas_group_idx=idx
+                box.separator()
+
                 #row = layout.row()
+                bake_item_idx=0
+                for bake_item in atlas_group.bake_items:
+                    row = box.row()
+                    row.prop(bake_item,"bake_type")
+                    if bake_item.image:
+                        row.prop(bake_item,"image")
+                    else:
+                        row.prop(bake_item,"image",icon="ERROR")
+
+                    op = row.operator('simpleatlas.delete_bake_item', text="", icon="X")
+                    op.atlas_group_idx=idx
+                    op.index=bake_item_idx
+                    bake_item_idx = bake_item_idx + 1
 
                 row = box.row()
-                row.prop(atlas_group,"diffuse")
-                row = box.row()
-                row.prop(atlas_group,"normal")
+                row.operator('simpleatlas.create_bake_item', text='add bake-type').atlas_group_idx=idx
 
-                row = box.row()
-                row.operator('simpleatlas.bake',text="bake group").atlasid=idx
+
+                #row.prop(atlas_group,"diffuse")
+                #row = box.row()
+                #row.prop(atlas_group,"normal")
+
 
             idx = idx + 1
+            if atlas_group.show_details:
+                layout.separator()
+
 
         box = layout.box()
         row = box.row()
@@ -339,8 +395,12 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         row = box.row()
         row.operator('simpleatlas.bake',text="bake all groups").atlasid=-1
 
-classes =(AtlasGroupItem,AtlasGroup,AtlasData
+classes =(AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
+            # group item
             ,UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
+            # bake item
+            ,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE
+            # group
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_MOVE
             ,SimpleAtlasRenderUI
             ,BakeAll)
