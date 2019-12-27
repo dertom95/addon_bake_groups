@@ -1,6 +1,6 @@
 found_blender = False
 try:
-    import bpy
+    import bpy,math
 except:
     pass
 
@@ -557,7 +557,160 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         bakeop = row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE")
         bakeop.atlasid=-1
         bakeop.only_select=False
+
+###################################################
+# 
+###################################################
+
+class Rearrange(bpy.types.Operator):
+    """automatically arrange uvs"""
+
+    bl_idname = "simpleatlas.uv_arrange"
+    bl_label = "arrange UVs"
+
+    atlas_grp_index : bpy.props.IntProperty()
+
+    def execute(self, context):
+        settings = bpy.context.scene.world.atlasSettings
         
+        if len(settings.atlas_groups) < self.atlas_grp_index:
+            return{'FINISHED'}
+        
+        atlas_grp = settings.atlas_groups[self.atlas_grp_index]
+
+        # retrieve valid items
+        valid_items = []
+        for item in atlas_grp.atlas_items:
+            if item.obj:
+                valid_items.append(item)
+        
+        amount_valid_items = len(valid_items)
+        if amount_valid_items == 0:
+            return{'FINISHED'}
+
+        elems_per_col = math.ceil(math.sqrt(amount_valid_items))
+        dt = 1.0 / elems_per_col
+        
+        # scale a bit more to have some space between the sub-uvs
+        scale = dt * 0.95
+
+        pos_x = 0.0
+        pos_y = 0.0
+
+
+        print("DT:%s" % dt)
+
+        # set pivot-mode 'cursor'
+        bpy.ops.object.mode_set(mode="EDIT",toggle=True)
+        bpy.context.space_data.pivot_point = 'CURSOR'
+        # set the uv-cursor
+        bpy.ops.uv.cursor_set(location=(0,0))
+        
+        bpy.ops.object.mode_set(mode="OBJECT",toggle=True)
+
+        count = 0
+
+        for item in valid_items:
+            print("PROCESS:%s" %item.obj.name)
+            # deselect all objects
+            bpy.ops.object.select_all(action='DESELECT')
+
+            print("Still selected:")
+            for obj in bpy.data.objects:
+                if obj.select_get():
+                    print(obj.name)
+                
+            print("----")
+
+            # select obj
+            bpy.context.view_layer.objects.active = item.obj   # Make the cube the active object 
+            item.obj.select_set(state=True)
+
+            # get render UV
+            renderUV = GetRenderUV(item.obj.data)
+            # select render UV
+            item.obj.data.uv_layers.active = renderUV
+            # copy render UV
+            newuv = item.obj.data.uv_layers.new()
+            # select new UV to make it the one we manipulate
+            item.obj.data.uv_layers.active = newuv
+            print("1")
+            newuv.name="GENERATED"
+
+            bpy.ops.object.mode_set(mode="EDIT",toggle=True)
+            bpy.ops.mesh.select_all(action='SELECT')
+            print("selected all")
+    
+            print("")
+            # if count == 1:
+            #     return{'FINISHED'}
+
+            bpy.ops.uv.select_all(action='SELECT')
+            # print("")
+            bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+            bpy.ops.transform.translate(value=(pos_x, pos_y, 0), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+            bpy.ops.mesh.select_all(action='DESELECT')
+            bpy.ops.uv.select_all(action='DESELECT')
+            
+
+            # print("")
+
+            pos_x = pos_x + dt
+            if pos_x >= 0.99:
+                pos_x = 0
+                pos_y = pos_y + dt
+
+            # select obj
+            bpy.ops.object.mode_set(mode="OBJECT",toggle=True)
+
+            count = count + 1
+
+
+        return{'FINISHED'}
+    
+
+# get the render uv
+def GetRenderUV(mesh):
+    for uv in mesh.uv_layers:
+        if uv.active_render:
+            return uv
+    return None
+
+class SimpleAtlasUVArrange(bpy.types.Panel):
+    bl_idname = "UV_PT_uv_arrange"
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "MaterialBaker"
+    bl_label ="rearranger"
+    
+
+    #bl_options = {'DEFAULT_CLOSED'}
+    
+    # @classmethod
+    # def poll(cls, context):
+    #     return bpy.context.scene.render.engine=="CYCLES"     
+
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        return sima and sima.mode=="UV"
+        #return True
+
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()
+        row.label(text="TOMTOM")
+        row = layout.row()
+        row.operator("simpleatlas.uv_arrange")
+
+
+        sima = context.space_data
+
+        col = layout.column()
+
+        col = layout.column()
+        col.prop(sima, "cursor_location", text="Cursor Location")        
 
 classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
@@ -566,8 +719,11 @@ classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGrou
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE
             # group
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_MOVE
-            ,SimpleAtlasRenderUI
-            ,BakeAll)
+            # scene panel
+            ,SimpleAtlasRenderUI,BakeAll
+            # uv arranger
+            ,SimpleAtlasUVArrange, Rearrange
+            )
 
 defRegister, defUnregister = bpy.utils.register_classes_factory(classes)
 
