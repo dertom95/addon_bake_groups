@@ -16,6 +16,14 @@ bl_info = {
     "category": "Object" }
 
 
+
+bakesetting_normal_axis = [ (axis[0],axis[1],axis[1]) for axis in [["POS_X","+X"],["POS_Y","+Y"],["POS_Z","+Z"],
+                                                          ["NEG_X","-X"],["NEG_Y","-Y"],["NEG_Z","-Z"]] ]
+
+bake_types = [(bt,bt,bt) for bt in ['DIFFUSE', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']]
+bake_types_with_customsettings = ['DIFFUSE', 'NORMAL', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']
+
+
 # ensure that you can only select mesh-objects
 def mesh_object_poll(self,object):
     if object.type!="MESH":
@@ -35,15 +43,79 @@ def AtlasGroupItemUVCallback(self, context):
 
     return groups
 
+# create backup of current bakesettings
+def push_current_bakesettings():
+    print("backup bakesettings")
+    current = bpy.context.scene.render.bake
+    backup = bpy.context.scene.world.atlasSettings.before_bakesettings
+
+    backup.use_pass_direct = current.use_pass_direct
+    backup.use_pass_indirect = current.use_pass_indirect
+    backup.use_pass_color = current.use_pass_color
+    # combined
+    backup.use_pass_diffuse = current.use_pass_diffuse
+    backup.use_pass_glossy = current.use_pass_glossy
+    backup.use_pass_transmission = current.use_pass_transmission
+    backup.use_pass_subsurface = current.use_pass_subsurface
+    backup.use_pass_ambient_occlusion = current.use_pass_ambient_occlusion
+    backup.use_pass_emit = current.use_pass_emit
+    # normal
+    backup.normal_space = current.normal_space
+    backup.normal_r = current.normal_r
+    backup.normal_g = current.normal_g
+    backup.normal_b = current.normal_b
+
+# set bakesettings
+def set_bakesettings(settings):
+    print("set bake-settings")
+    current = bpy.context.scene.render.bake
+
+    current.use_pass_direct = settings.use_pass_direct
+    current.use_pass_indirect = settings.use_pass_indirect
+    current.use_pass_color = settings.use_pass_color
+    # combined
+    current.use_pass_diffuse = settings.use_pass_diffuse
+    current.use_pass_glossy = settings.use_pass_glossy
+    current.use_pass_transmission = settings.use_pass_transmission
+    current.use_pass_subsurface = settings.use_pass_subsurface
+    current.use_pass_ambient_occlusion = settings.use_pass_ambient_occlusion
+    current.use_pass_emit = settings.use_pass_emit
+    # normal
+    current.normal_space = settings.normal_space
+    current.normal_r = settings.normal_r
+    current.normal_g = settings.normal_g
+    current.normal_b = settings.normal_b
+
+class AtlasGroupBakeItemSettings(bpy.types.PropertyGroup):
+    show_settings: bpy.props.BoolProperty(default=True,description="show settings")
+    bake_type: bpy.props.StringProperty()
+    
+    use_pass_direct: bpy.props.BoolProperty()
+    use_pass_indirect: bpy.props.BoolProperty()
+    use_pass_color: bpy.props.BoolProperty(default=True)
+    # combined
+    use_pass_diffuse: bpy.props.BoolProperty()
+    use_pass_glossy: bpy.props.BoolProperty()
+    use_pass_transmission: bpy.props.BoolProperty()
+    use_pass_subsurface: bpy.props.BoolProperty()
+    use_pass_ambient_occlusion: bpy.props.BoolProperty()
+    use_pass_emit: bpy.props.BoolProperty()
+    # normal
+    normal_space: bpy.props.EnumProperty(items=[("TANGENT","TANGENT","TANGENT"),("OBJECT","OBJECT","OBJECT")])
+    normal_r: bpy.props.EnumProperty(items=bakesetting_normal_axis,default="POS_X")
+    normal_g:bpy.props.EnumProperty(items=bakesetting_normal_axis,default="POS_Y")
+    normal_b:bpy.props.EnumProperty(items=bakesetting_normal_axis,default="POS_Z")
+
+
+
 class AtlasGroupItem(bpy.types.PropertyGroup):
     obj : bpy.props.PointerProperty(type=bpy.types.Object,poll=mesh_object_poll)
     atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback, description="UVMap used for baking")
 
-bake_types = [(bt,bt,bt) for bt in ['COMBINED', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']]
-
 class AtlasGroupBakeItem(bpy.types.PropertyGroup):
     bake_type : bpy.props.EnumProperty(items=bake_types)
     image : bpy.props.PointerProperty(type=bpy.types.Image)
+    bake_settings : bpy.props.PointerProperty(type=AtlasGroupBakeItemSettings)
 
 class AtlasGroup(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(default="noname")
@@ -59,6 +131,8 @@ class AtlasData(bpy.types.PropertyGroup):
     saveimage_after_bake : bpy.props.BoolProperty(description="save image after bake if filepath is set")
     atlas_groups : bpy.props.CollectionProperty(type=AtlasGroup)
     selection_idx : bpy.props.IntProperty()
+    before_bakesettings : bpy.props.PointerProperty(type=AtlasGroupBakeItemSettings)
+    negative_bool : bpy.props.BoolProperty(name="",description="")
 
 
 ##############################################
@@ -226,7 +300,7 @@ class BakeAll(bpy.types.Operator):
         handled_materials = []
 
         created_nodes = []
-
+        
         # force object mode
         bpy.ops.object.mode_set(mode="OBJECT",toggle=False)        
         # deselect all objects
@@ -274,6 +348,8 @@ class BakeAll(bpy.types.Operator):
             for imgTexNode in created_nodes:
                 imgTexNode.image = bake_item.image
             
+            set_bakesettings(bake_item.bake_settings)
+
             # bake
             print("bake %s" % bake_item.bake_type)
             bpy.ops.object.bake(type=bake_item.bake_type)
@@ -293,14 +369,21 @@ class BakeAll(bpy.types.Operator):
 
 
     def execute(self, context):
-        atlasGroupList = context.scene.world.atlasSettings.atlas_groups
+        # create backup of current bakesettings
+        push_current_bakesettings()
+
+        atlas_settings = context.scene.world.atlasSettings
+        atlas_group_list = atlas_settings.atlas_groups
 
         if self.atlasid==-1:
-            for atlas_group in atlasGroupList:
+            for atlas_group in atlas_group_list:
                 self.bake(context,atlas_group)
         else:
-            bakeGrp = atlasGroupList[self.atlasid]
+            bakeGrp = atlas_group_list[self.atlasid]
             self.bake(context,bakeGrp)
+
+        set_bakesettings(atlas_settings.before_bakesettings)
+
         return{'FINISHED'}
 
 
@@ -372,6 +455,53 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                     op = row.operator('simpleatlas.delete_bake_item', text="", icon="X")
                     op.atlas_group_idx=idx
                     op.index=bake_item_idx
+
+                    bsettings = bake_item.bake_settings
+
+                    has_settings = bake_item.bake_type in bake_types_with_customsettings
+                    col = row.column()
+                    if has_settings:
+                        col.prop(bsettings,"show_settings",text="",icon="OPTIONS",toggle=True)
+                        col.enabled=True
+                    else:
+                        col.prop(settings,"negative_bool",text="",toggle=True)
+                        col.enabled=False
+
+                    if bsettings.show_settings:
+                        col = box.column()
+                        if bake_item.bake_type in {'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE'}:
+                            row = col.row(align=True)
+                            row.use_property_split = False
+                            row.prop(bsettings, "use_pass_direct", toggle=True)
+                            row.prop(bsettings, "use_pass_indirect", toggle=True)
+                            row.prop(bsettings, "use_pass_color", toggle=True)
+
+
+                        elif bake_item.bake_type == 'NORMAL':
+                            col.prop(bsettings, "normal_space", text="Space")
+
+                            sub = col.column(align=True)
+                            sub.prop(bsettings, "normal_r", text="Swizzle R")
+                            sub.prop(bsettings, "normal_g", text="G")
+                            sub.prop(bsettings, "normal_b", text="B")
+
+                        elif bake_item.bake_type == 'COMBINED':
+                            row = col.row(align=True)
+                            row.use_property_split = False
+                            row.prop(bsettings, "use_pass_direct", toggle=True)
+                            row.prop(bsettings, "use_pass_indirect", toggle=True)
+
+                            flow = col.grid_flow(row_major=False, columns=0, even_columns=False, even_rows=False, align=True)
+
+                            flow.active = bsettings.use_pass_direct or bsettings.use_pass_indirect
+                            flow.prop(bsettings, "use_pass_diffuse")
+                            flow.prop(bsettings, "use_pass_glossy")
+                            flow.prop(bsettings, "use_pass_transmission")
+                            flow.prop(bsettings, "use_pass_subsurface")
+                            flow.prop(bsettings, "use_pass_ambient_occlusion")
+                            flow.prop(bsettings, "use_pass_emit")
+
+
                     bake_item_idx = bake_item_idx + 1
 
                 row = box.row()
@@ -387,6 +517,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
             if atlas_group.show_details:
                 layout.separator()
 
+        layout.prop( bpy.context.scene.render.bake,"use_clear",text="clear images before bake")
         layout.prop(settings,"saveimage_after_bake",text="save images after bake")
 
         box = layout.box()
@@ -397,7 +528,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         row = box.row()
         row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE").atlasid=-1
 
-classes =(AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
+classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
             ,UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
             # bake item
