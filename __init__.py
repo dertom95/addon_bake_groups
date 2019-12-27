@@ -37,7 +37,7 @@ def AtlasGroupItemUVCallback(self, context):
 
 class AtlasGroupItem(bpy.types.PropertyGroup):
     obj : bpy.props.PointerProperty(type=bpy.types.Object,poll=mesh_object_poll)
-    atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback)
+    atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback, description="UVMap used for baking")
 
 class AtlasGroup(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(default="noname")
@@ -337,7 +337,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         row.operator('simpleatlas.create_group', text='NEW BAKE GROUP',icon="MONKEY")
 
         row = box.row()
-        row.operator('simpleatlas.bake',text="bake all").atlasid=-1
+        row.operator('simpleatlas.bake',text="bake all groups").atlasid=-1
 
 classes =(AtlasGroupItem,AtlasGroup,AtlasData
             ,UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE
