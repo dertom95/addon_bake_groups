@@ -16,15 +16,28 @@ bl_info = {
     "category": "Object" }
 
 
+# ensure that you can only select mesh-objects
 def mesh_object_poll(self,object):
-    return object.type=="MESH"
+    if object.type!="MESH":
+        return False
+
+    # todo prevent selection of one object multiple times        
+    return True
     
+# output all object-uvmaps    
+def AtlasGroupItemUVCallback(self, context):
+    groups = []
+
+    idx=0
+    for uv in self.obj.data.uv_layers:
+        groups.append((str(idx),uv.name,uv.name,idx))
+        idx = idx + 1
+
+    return groups
+
 class AtlasGroupItem(bpy.types.PropertyGroup):
     obj : bpy.props.PointerProperty(type=bpy.types.Object,poll=mesh_object_poll)
-    atlas_uv : bpy.props.IntProperty(default=0)
-    #atlas_uv : bpy.props.PointerProperty(type=bpy.types.MeshUVLoopLayer)
-
-
+    atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback)
 
 class AtlasGroup(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(default="noname")
@@ -57,8 +70,14 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUP_ITEM(bpy.types.UIList):
             row.prop(item,"obj")
             if item.obj:
                 row = layout.row()
-                row.prop(item,"atlas_uv")
-                #row.template_list("MESH_UL_uvmaps", "uvmaps", item.obj.data, "uv_layers", item, "atlas_uv", rows=1)
+                if len(item.obj.data.uv_layers)==0:
+                    row.label(text="no uvmaps",icon="ERROR")
+                else:
+                    if item.atlas_uv:
+                        row.prop(item,"atlas_uv",text="uv")
+                    else:
+                        row.prop(item,"atlas_uv",text="uv",icon="ERROR")
+                
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
             layout.label(text="", icon = custom_icon)
@@ -69,7 +88,7 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE(bpy.types.Operator):
     bl_idname = "simpleatlas.create_group_item"
     bl_label = "Add a new atlas group"
 
-    atlas_group_idx = bpy.props.IntProperty()
+    atlas_group_idx : bpy.props.IntProperty()
 
     def execute(self, context):
         context.scene.world.atlasSettings.atlas_groups[self.atlas_group_idx].atlas_items.add()
@@ -81,7 +100,7 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE(bpy.types.Operator):
     bl_idname = "simpleatlas.delete_group_item"
     bl_label = "Add a new atlas group"
 
-    atlas_group_idx = bpy.props.IntProperty()
+    atlas_group_idx : bpy.props.IntProperty()
 
     def execute(self, context):
         group = context.scene.world.atlasSettings.atlas_groups[self.atlas_group_idx]
@@ -178,11 +197,14 @@ class BakeAll(bpy.types.Operator):
             if not item.obj:
                 continue
 
+            if not item.atlas_uv or len(item.obj.data.uv_layers)==0:
+                print("Object %s has not uvlayers set" % item.obj.name)
+
             # select the object
             item.obj.select_set(state=True)
 
             # set active uvmaps to the atlas ones
-            item.obj.data.uv_layers.active_index = item.atlas_uv
+            item.obj.data.uv_layers.active_index = int(item.atlas_uv)
 
             for mat_slot in item.obj.material_slots:
                 if mat_slot.material in handled_materials:
