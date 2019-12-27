@@ -56,6 +56,7 @@ class AtlasGroup(bpy.types.PropertyGroup):
     bake_selection_idx : bpy.props.IntProperty()
 
 class AtlasData(bpy.types.PropertyGroup):
+    saveimage_after_bake : bpy.props.BoolProperty(description="save image after bake if filepath is set")
     atlas_groups : bpy.props.CollectionProperty(type=AtlasGroup)
     selection_idx : bpy.props.IntProperty()
 
@@ -276,8 +277,8 @@ class BakeAll(bpy.types.Operator):
             # bake
             print("bake %s" % bake_item.bake_type)
             bpy.ops.object.bake(type=bake_item.bake_type)
-
-
+            if bake_item.image.filepath:
+                bake_item.image.save()
 
 
         # cleanup
@@ -334,7 +335,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row = box.row()
                 row.label(text=atlas_group.name)
 
-            row.prop(atlas_group,"show_details",text="details")
+            row.prop(atlas_group,"show_details",text="details",toggle=True)
 
             row.operator('simpleatlas.bake',text="bake").atlasid=idx
 
@@ -386,14 +387,15 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
             if atlas_group.show_details:
                 layout.separator()
 
+        layout.prop(settings,"saveimage_after_bake",text="save images after bake")
 
         box = layout.box()
         row = box.row()
 
-        row.operator('simpleatlas.create_group', text='NEW BAKE GROUP',icon="MONKEY")
+        row.operator('simpleatlas.create_group', text='new bake group',icon="MONKEY")
 
         row = box.row()
-        row.operator('simpleatlas.bake',text="bake all groups").atlasid=-1
+        row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE").atlasid=-1
 
 classes =(AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
