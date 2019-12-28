@@ -135,7 +135,7 @@ class AtlasGroupBakeItem(bpy.types.PropertyGroup):
 
 class AtlasGroup(bpy.types.PropertyGroup):
     name : bpy.props.StringProperty(default="noname")
-    show_details : bpy.props.BoolProperty()
+    show_details : bpy.props.BoolProperty(default=True)
     atlas_items : bpy.props.CollectionProperty(type=AtlasGroupItem)
     bake_items: bpy.props.CollectionProperty(type=AtlasGroupBakeItem)
     selection_idx : bpy.props.IntProperty()
@@ -617,9 +617,9 @@ class Rearrange(bpy.types.Operator):
             return{'FINISHED'}
 
         elems_per_col = math.ceil(math.sqrt(amount_valid_items))
-        dt = 1.0 / elems_per_col
+        dt = 1.0 / elems_per_col # and row
         
-        # scale a bit more to have some space between the sub-uvs
+        # scale a bit down to have some space between single uvs
         scale = dt * 0.95
 
         pos_x = 0.0
@@ -687,8 +687,11 @@ class Rearrange(bpy.types.Operator):
 
             bpy.ops.uv.select_all(action='SELECT')
             # print("")
-            bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
-            bpy.ops.transform.translate(value=(pos_x, pos_y, 0), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+            if len(valid_items)>1:
+                # nothing to do if we only bake one uvmap
+                bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+                bpy.ops.transform.translate(value=(pos_x, pos_y, 0), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+
             bpy.ops.mesh.select_all(action='DESELECT')
             bpy.ops.uv.select_all(action='DESELECT')
             
