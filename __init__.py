@@ -94,11 +94,13 @@ def set_bakesettings(settings):
     current.normal_g = settings.normal_g
     current.normal_b = settings.normal_b
 
+#########################
+# Settings PropertyGroups    
+#########################
 class RearrangeSettings(bpy.types.PropertyGroup):
     uv_name             : bpy.props.StringProperty(default="Generated")
     uv_name_overwrite   : bpy.props.BoolProperty(default=True)
-
-
+    uv_autoset_bakeuv   : bpy.props.BoolProperty(default=True,description="automatically set the generated uv as bake-uv for all object's bake-group")
 
 class AtlasGroupBakeItemSettings(bpy.types.PropertyGroup):
     show_settings: bpy.props.BoolProperty(default=True,description="show settings")
@@ -576,6 +578,14 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         bakeop.atlasid=-1
         bakeop.only_select=False
 
+def get_uv_index(mesh,uv):
+    idx = 0
+    for _uv in mesh.uv_layers:
+        if _uv == uv:
+            return idx
+        idx = idx + 1
+    return None
+
 ###################################################
 # (Re)arrange uvs
 ###################################################
@@ -658,6 +668,12 @@ class Rearrange(bpy.types.Operator):
             newuv = item.obj.data.uv_layers.new()
             # select new UV to make it the one we manipulate
             item.obj.data.uv_layers.active = newuv
+
+            if rsettings.uv_autoset_bakeuv:
+                uv_idx = get_uv_index(item.obj.data,newuv)
+                print ("autoset bakeuv:%s" % uv_idx)
+                if uv_idx:
+                    item.atlas_uv = str(uv_idx)
             print("1")
             newuv.name=rsettings.uv_name
 
@@ -739,6 +755,9 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         row.prop(rsettings,"uv_name")
         row = layout.row()
         row.prop(rsettings,"uv_name_overwrite")
+        row = layout.row()
+        row.prop(rsettings,"uv_autoset_bakeuv")
+
         row = layout.row()
         if not rsettings.uv_name or rsettings.uv_name=="":
             col = row.column()
