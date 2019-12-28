@@ -144,7 +144,7 @@ class AtlasGroup(bpy.types.PropertyGroup):
 
 
 class AtlasData(bpy.types.PropertyGroup):
-    saveimage_after_bake : bpy.props.BoolProperty(description="save image after bake if filepath is set")
+    saveimage_after_bake : bpy.props.BoolProperty(default=True,description="save image after bake if filepath is set")
     atlas_groups : bpy.props.CollectionProperty(type=AtlasGroup)
     selection_idx : bpy.props.IntProperty()
     before_bakesettings : bpy.props.PointerProperty(type=AtlasGroupBakeItemSettings)
@@ -332,6 +332,7 @@ class BakeAll(bpy.types.Operator):
         return True
 
     def bake(self,context,atlasgroup):
+        atlas_settings = context.scene.world.atlasSettings
 
         if len(atlasgroup.bake_items)==0:
             print("atlas group:%s NO bake-elements")
@@ -399,7 +400,7 @@ class BakeAll(bpy.types.Operator):
             # bake
             print("bake %s" % bake_item.bake_type)
             bpy.ops.object.bake(type=bake_item.bake_type)
-            if bake_item.image.filepath:
+            if atlas_settings.saveimage_after_bake and bake_item.image.filepath:
                 bake_item.image.save()
 
 
@@ -435,7 +436,7 @@ class BakeAll(bpy.types.Operator):
 
 class SimpleAtlasRenderUI(bpy.types.Panel):
     bl_idname = "RENDER_PT_simple_atlas"
-    bl_label = "Simple Atlas"
+    bl_label = "Bake Groups"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "render"
@@ -755,11 +756,11 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         rsettings = atlas_group.uv_rearrange_settings
         
         row = layout.row()
-        row.prop(rsettings,"uv_name")
+        row.prop(rsettings,"uv_name",text="new uv-name")
         row = layout.row()
-        row.prop(rsettings,"uv_name_overwrite")
+        row.prop(rsettings,"uv_name_overwrite",text="overwrite uv with same name?")
         row = layout.row()
-        row.prop(rsettings,"uv_autoset_bakeuv")
+        row.prop(rsettings,"uv_autoset_bakeuv",text="set new uv as bake-uv in bake group")
 
         row = layout.row()
         if not rsettings.uv_name or rsettings.uv_name=="":
