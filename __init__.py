@@ -24,6 +24,14 @@ bake_types = [(bt,bt,bt) for bt in ['DIFFUSE', 'AO', 'SHADOW', 'NORMAL', 'UV', '
 bake_types_with_customsettings = ['DIFFUSE', 'NORMAL', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']
 
 
+def GetAtlasGroupByName(name):
+    settings = bpy.context.scene.world.atlasSettings
+
+    for atlas_group in settings.atlas_groups:
+        if atlas_group.name == name:
+            return atlas_group
+    return None
+
 # ensure that you can only select mesh-objects
 def mesh_object_poll(self,object):
     if object.type!="MESH":
@@ -86,6 +94,12 @@ def set_bakesettings(settings):
     current.normal_g = settings.normal_g
     current.normal_b = settings.normal_b
 
+class RearrangeSettings(bpy.types.PropertyGroup):
+    uv_name             : bpy.props.StringProperty(default="Generated")
+    uv_name_overwrite   : bpy.props.BoolProperty(default=True)
+
+
+
 class AtlasGroupBakeItemSettings(bpy.types.PropertyGroup):
     show_settings: bpy.props.BoolProperty(default=True,description="show settings")
     bake_type: bpy.props.StringProperty()
@@ -122,17 +136,19 @@ class AtlasGroup(bpy.types.PropertyGroup):
     show_details : bpy.props.BoolProperty()
     atlas_items : bpy.props.CollectionProperty(type=AtlasGroupItem)
     bake_items: bpy.props.CollectionProperty(type=AtlasGroupBakeItem)
-    #diffuse : bpy.props.PointerProperty(type=bpy.types.Image)
-    #normal : bpy.props.PointerProperty(type=bpy.types.Image)
     selection_idx : bpy.props.IntProperty()
     bake_selection_idx : bpy.props.IntProperty()
+    uv_rearrange_settings : bpy.props.PointerProperty(type=RearrangeSettings)
+
 
 class AtlasData(bpy.types.PropertyGroup):
     saveimage_after_bake : bpy.props.BoolProperty(description="save image after bake if filepath is set")
     atlas_groups : bpy.props.CollectionProperty(type=AtlasGroup)
     selection_idx : bpy.props.IntProperty()
     before_bakesettings : bpy.props.PointerProperty(type=AtlasGroupBakeItemSettings)
-    negative_bool : bpy.props.BoolProperty(name="",description="")
+    negative_bool : bpy.props.BoolProperty(name="",description="") # super silly
+    ## uv (re)arrange ui-data
+    uv_rearrange_atlasname : bpy.props.StringProperty()
 
 
 ##############################################
@@ -250,7 +266,9 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE(bpy.types.Operator):
     bl_label = "Add a new atlas group"
 
     def execute(self, context):
-        context.scene.world.atlasSettings.atlas_groups.add()
+        newgrp = context.scene.world.atlasSettings.atlas_groups.add()
+        # add a fist atlas-item on group-creation
+        newgrp.bake_items.add()
         return{'FINISHED'}
 
 class UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE(bpy.types.Operator):
@@ -444,7 +462,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row = box.row()
                 row.label(text=atlas_group.name)
 
-            row.prop(atlas_group,"show_details",text="details",toggle=True)
+            row.prop(atlas_group,"show_details",text="details")
 
             bakeop = row.operator('simpleatlas.bake',text="select")
             bakeop.atlasid=idx
@@ -559,24 +577,24 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         bakeop.only_select=False
 
 ###################################################
-# 
+# (Re)arrange uvs
 ###################################################
-
 class Rearrange(bpy.types.Operator):
     """automatically arrange uvs"""
 
     bl_idname = "simpleatlas.uv_arrange"
     bl_label = "arrange UVs"
 
-    atlas_grp_index : bpy.props.IntProperty()
-
     def execute(self, context):
         settings = bpy.context.scene.world.atlasSettings
         
-        if len(settings.atlas_groups) < self.atlas_grp_index:
+        atlas_grp = GetAtlasGroupByName(settings.uv_rearrange_atlasname)
+
+        if not atlas_grp:
             return{'FINISHED'}
-        
-        atlas_grp = settings.atlas_groups[self.atlas_grp_index]
+
+
+        rsettings = atlas_grp.uv_rearrange_settings
 
         # retrieve valid items
         valid_items = []
@@ -601,12 +619,12 @@ class Rearrange(bpy.types.Operator):
         print("DT:%s" % dt)
 
         # set pivot-mode 'cursor'
-        bpy.ops.object.mode_set(mode="EDIT",toggle=True)
+        bpy.ops.object.mode_set(mode="EDIT",toggle=False)
         bpy.context.space_data.pivot_point = 'CURSOR'
         # set the uv-cursor
         bpy.ops.uv.cursor_set(location=(0,0))
         
-        bpy.ops.object.mode_set(mode="OBJECT",toggle=True)
+        bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
 
         count = 0
 
@@ -626,6 +644,12 @@ class Rearrange(bpy.types.Operator):
             bpy.context.view_layer.objects.active = item.obj   # Make the cube the active object 
             item.obj.select_set(state=True)
 
+            if (rsettings.uv_name_overwrite):
+                # check if we already got an uvmap with that name => remove it
+                for uvmap in item.obj.data.uv_layers:
+                    if uvmap.name == rsettings.uv_name:
+                        item.obj.data.uv_layers.remove(uvmap)
+
             # get render UV
             renderUV = GetRenderUV(item.obj.data)
             # select render UV
@@ -635,9 +659,9 @@ class Rearrange(bpy.types.Operator):
             # select new UV to make it the one we manipulate
             item.obj.data.uv_layers.active = newuv
             print("1")
-            newuv.name="GENERATED"
+            newuv.name=rsettings.uv_name
 
-            bpy.ops.object.mode_set(mode="EDIT",toggle=True)
+            bpy.ops.object.mode_set(mode="EDIT",toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
             print("selected all")
     
@@ -661,7 +685,7 @@ class Rearrange(bpy.types.Operator):
                 pos_y = pos_y + dt
 
             # select obj
-            bpy.ops.object.mode_set(mode="OBJECT",toggle=True)
+            bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
 
             count = count + 1
 
@@ -698,11 +722,30 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         #return True
 
     def draw(self, context):
+        settings = bpy.context.scene.world.atlasSettings
+
         layout = self.layout
         row = layout.row()
-        row.label(text="TOMTOM")
+        row.prop_search(settings,"uv_rearrange_atlasname",settings,"atlas_groups",text="bake group")
+
+        atlas_group = GetAtlasGroupByName(settings.uv_rearrange_atlasname)
+
+        if not atlas_group:
+            return
+    
+        rsettings = atlas_group.uv_rearrange_settings
+        
         row = layout.row()
-        row.operator("simpleatlas.uv_arrange")
+        row.prop(rsettings,"uv_name")
+        row = layout.row()
+        row.prop(rsettings,"uv_name_overwrite")
+        row = layout.row()
+        if not rsettings.uv_name or rsettings.uv_name=="":
+            col = row.column()
+            col.enabled=False
+            col.operator("simpleatlas.uv_arrange")
+        else:
+            row.operator("simpleatlas.uv_arrange")
 
 
         sima = context.space_data
@@ -712,7 +755,7 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         col = layout.column()
         col.prop(sima, "cursor_location", text="Cursor Location")        
 
-classes =(AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
+classes =(RearrangeSettings, AtlasGroupBakeItemSettings,AtlasGroupBakeItem,AtlasGroupItem,AtlasGroup,AtlasData
             # group item
             ,SIMPLEATLAS_UL_LIST_ATLASGROUP_ITEM,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPITEM_SELECT
             # bake item
