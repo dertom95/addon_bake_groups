@@ -5,10 +5,10 @@ except:
     pass
 
 bl_info = {
-    "name": "Simple Atlas",
-    "description": "creates simple atlas for multiple objects",
+    "name": "Bake Groups",
+    "description": "Helper Tool to bake materials to textures. Define groups of objects, create automatically atlas, bake",
     "author": "Thomas Trocha",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (2, 80, 0),
     "location": "View3D",
     "warning": "This addon is still in development.",
