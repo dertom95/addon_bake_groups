@@ -16,11 +16,10 @@ bl_info = {
     "category": "Object" }
 
 
-
 bakesetting_normal_axis = [ (axis[0],axis[1],axis[1]) for axis in [["POS_X","+X"],["POS_Y","+Y"],["POS_Z","+Z"],
                                                           ["NEG_X","-X"],["NEG_Y","-Y"],["NEG_Z","-Z"]] ]
 
-bake_types = [(bt,bt,bt) for bt in ['DIFFUSE', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']]
+bake_types = [(bt,bt,bt) for bt in ['DIFFUSE', 'ROUGHNESS', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']]
 bake_types_with_customsettings = ['DIFFUSE', 'NORMAL', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE']
 
 
@@ -103,7 +102,7 @@ class RearrangeSettings(bpy.types.PropertyGroup):
     uv_autoset_bakeuv   : bpy.props.BoolProperty(default=True,description="automatically set the generated uv as bake-uv for all object's bake-group")
 
 class AtlasGroupBakeItemSettings(bpy.types.PropertyGroup):
-    show_settings: bpy.props.BoolProperty(default=True,description="show settings")
+    show_settings: bpy.props.BoolProperty(default=False,description="show settings")
     bake_type: bpy.props.StringProperty()
     
     use_pass_direct: bpy.props.BoolProperty()
@@ -458,7 +457,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
             
             if atlas_group.show_details:
                 row = box.row()
-                row.label(text="Bake Atlas")
+                row.label(text=("Bake Group: %s" % atlas_group.name ) ) 
                 row = box.row()
                 row.prop(atlas_group,"name")
             else:
@@ -526,9 +525,9 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                         if bake_item.bake_type in {'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE'}:
                             row = col.row(align=True)
                             row.use_property_split = False
-                            row.prop(bsettings, "use_pass_direct", toggle=True)
-                            row.prop(bsettings, "use_pass_indirect", toggle=True)
-                            row.prop(bsettings, "use_pass_color", toggle=True)
+                            row.prop(bsettings, "use_pass_direct", toggle=True,text="Direct")
+                            row.prop(bsettings, "use_pass_indirect", toggle=True,text="Indirect")
+                            row.prop(bsettings, "use_pass_color", toggle=True,text="Color")
 
 
                         elif bake_item.bake_type == 'NORMAL':
@@ -542,18 +541,18 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                         elif bake_item.bake_type == 'COMBINED':
                             row = col.row(align=True)
                             row.use_property_split = False
-                            row.prop(bsettings, "use_pass_direct", toggle=True)
-                            row.prop(bsettings, "use_pass_indirect", toggle=True)
+                            row.prop(bsettings, "use_pass_direct", toggle=True,text="Direct")
+                            row.prop(bsettings, "use_pass_indirect", toggle=True,text="Indirect")
 
                             flow = col.grid_flow(row_major=False, columns=0, even_columns=False, even_rows=False, align=True)
 
                             flow.active = bsettings.use_pass_direct or bsettings.use_pass_indirect
-                            flow.prop(bsettings, "use_pass_diffuse")
-                            flow.prop(bsettings, "use_pass_glossy")
-                            flow.prop(bsettings, "use_pass_transmission")
-                            flow.prop(bsettings, "use_pass_subsurface")
-                            flow.prop(bsettings, "use_pass_ambient_occlusion")
-                            flow.prop(bsettings, "use_pass_emit")
+                            flow.prop(bsettings, "use_pass_diffuse",text="Diffuse")
+                            flow.prop(bsettings, "use_pass_glossy",text="Glossy")
+                            flow.prop(bsettings, "use_pass_transmission",text="Transmission")
+                            flow.prop(bsettings, "use_pass_subsurface",text="Subsurface")
+                            flow.prop(bsettings, "use_pass_ambient_occlusion",text="Ambient Occlusion")
+                            flow.prop(bsettings, "use_pass_emit",text="Emit")
 
 
                     bake_item_idx = bake_item_idx + 1
