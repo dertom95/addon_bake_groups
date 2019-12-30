@@ -505,6 +505,8 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row.operator('simpleatlas.create_group_item', text='add obj').atlas_group_idx=idx
                 row.operator('simpleatlas.delete_group_item', text='del obj').atlas_group_idx=idx
                 row.operator('simpleatlas.select_group_item', text='select obj').atlas_group_idx=idx
+                row.operator('image.new', text="", icon="FILE_IMAGE")
+ 
                 box.separator()
 
                 #row = layout.row()
@@ -516,10 +518,6 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                         row.prop(bake_item,"image")
                     else:
                         row.prop(bake_item,"image",icon="ERROR")
-
-                    op = row.operator('simpleatlas.delete_bake_item', text="", icon="X")
-                    op.atlas_group_idx=idx
-                    op.index=bake_item_idx
 
                     bsettings = bake_item.bake_settings
 
@@ -565,6 +563,10 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                             flow.prop(bsettings, "use_pass_subsurface",text="Subsurface")
                             flow.prop(bsettings, "use_pass_ambient_occlusion",text="Ambient Occlusion")
                             flow.prop(bsettings, "use_pass_emit",text="Emit")
+
+                    op = row.operator('simpleatlas.delete_bake_item', text="", icon="X")
+                    op.atlas_group_idx=idx
+                    op.index=bake_item_idx
 
 
                     bake_item_idx = bake_item_idx + 1
