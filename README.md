@@ -16,7 +16,7 @@ In order to render your material to textures you obviously need:
 ![bakegroupspanel](img/02_scene_props.png)  
   
 2 = Create 'bake group'  
-3 = process all(!) 'bake groups' and bake its textures (*blender will become unresponsive during the whole process! This might take a while. The only feedback can be seen in the console*) 
+3 = process all(!) 'bake groups' and bake its textures (*blender will become unresponsive during the whole process! This might take a while. The only feedback can be seen in the console*)   
 1 = save the textures afterwards. **Caution:** The textures need to have a valid filepath (saved somewhere or loaded it from file)  
   
 ![bakegroupspanel](img/03_overview.png)  
