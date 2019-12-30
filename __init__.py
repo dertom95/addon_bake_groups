@@ -754,7 +754,11 @@ class Rearrange(bpy.types.Operator):
                     break
 
             # deselect obj
-            bpy.ops.simpleatlas.select_group_item(atlas_group_idx=atlas_grp_idx)
+            print("TRY TO SELECT %s" %atlas_grp_idx)
+            bpy.ops.simpleatlas.bake(atlasid=atlas_grp_idx,only_select=True)
+            bpy.ops.object.mode_set(mode="OBJECT",toggle=True)            
+
+
             bpy.ops.object.mode_set(mode="EDIT",toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
 
