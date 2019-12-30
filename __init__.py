@@ -110,6 +110,7 @@ class RearrangeSettings(bpy.types.PropertyGroup):
     uv_name             : bpy.props.StringProperty(default="Generated")
     uv_name_overwrite   : bpy.props.BoolProperty(default=True)
     uv_autoset_bakeuv   : bpy.props.BoolProperty(default=True,description="automatically set the generated uv as bake-uv for all object's bake-group")
+    uv_split_multimaterial : bpy.props.BoolProperty(default=False, description="give every material a slot/slotpart of its own(e.g. if uvmaps are colliding)")
     uv_pack_multimaterial: bpy.props.BoolProperty(default=False,description="pack multiple mesh-materials on one uv-slot (squash on x-axis) or give each material one uv-slot(default)")
 
 class AtlasGroupBakeItemSettings(bpy.types.PropertyGroup):
@@ -604,7 +605,7 @@ class Rearrange(bpy.types.Operator):
     """automatically arrange uvs"""
 
     bl_idname = "simpleatlas.uv_arrange"
-    bl_label = "arrange UVs"
+    bl_label = "Create UVMap"
 
 
     def execute(self, context):
@@ -634,7 +635,7 @@ class Rearrange(bpy.types.Operator):
                 material_idx_map[item.obj.data]=used_materials
 
                 tex_amount = tex_amount + len(used_materials)
-                if pack_multi_material:
+                if pack_multi_material or not rsettings.uv_split_multimaterial:
                     slot_amount = slot_amount + 1
                 else:
                     slot_amount = slot_amount + len(used_materials)
@@ -642,6 +643,9 @@ class Rearrange(bpy.types.Operator):
         
         if slot_amount == 0:
             return{'FINISHED'}
+
+        if len(valid_items) == 1:
+            slot_amount = 1
 
         elems_per_col = math.ceil(math.sqrt(slot_amount))
         dt = 1.0 / elems_per_col # and row
@@ -661,15 +665,15 @@ class Rearrange(bpy.types.Operator):
         # set the uv-cursor
         bpy.ops.uv.cursor_set(location=(0,0))
         
-        bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
 
         for item in valid_items:
+            bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
             print("PROCESS:%s" %item.obj.name)
             # deselect all objects
             bpy.ops.object.select_all(action='DESELECT')
 
             # select obj
-            bpy.context.view_layer.objects.active = item.obj   # Make the cube the active object 
+            bpy.context.view_layer.objects.active = item.obj   # Make the current obj the active object 
             item.obj.select_set(state=True)
 
             if (rsettings.uv_name_overwrite):
@@ -703,6 +707,10 @@ class Rearrange(bpy.types.Operator):
                 bpy.ops.object.mode_set(mode="EDIT",toggle=False)
                 # deselect verices on mesh
                 bpy.ops.mesh.select_all(action='DESELECT')
+                
+                if not rsettings.uv_split_multimaterial:
+                    bpy.ops.mesh.select_all(action='SELECT') # if we don't split. one pass with all vertices is enough       
+
                 # select material-slot
                 bpy.context.object.active_material_index = mat_slot_idx
                 # select all faces
@@ -716,8 +724,8 @@ class Rearrange(bpy.types.Operator):
                     if len(valid_items)!=1:
                         bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
                     
-                    if pack_multi_material or len(valid_items)==1:
-                        print("pack %s" % pack_multi_material)
+                    if rsettings.uv_split_multimaterial and (pack_multi_material or len(valid_items)==1):
+                        print("pack %s dt:%s" % (pack_multi_material,dt))
                         # pack: all material-textures on one slot.
                         x_step = dt / len(material_slots)
                         x_size = (1 / len(material_slots)) * 0.95 # (keep some distance between the sub-slots)
@@ -741,8 +749,15 @@ class Rearrange(bpy.types.Operator):
                 bpy.ops.uv.select_all(action='DESELECT')
                 bpy.ops.object.mode_set(mode="OBJECT",toggle=False)            
 
+                if not rsettings.uv_split_multimaterial:
+                    # one pass is enough if you do not split the multimaterials
+                    break
+
             # deselect obj
             bpy.ops.simpleatlas.select_group_item(atlas_group_idx=atlas_grp_idx)
+            bpy.ops.object.mode_set(mode="EDIT",toggle=False)
+            bpy.ops.mesh.select_all(action='SELECT')
+
 
 
 
@@ -760,8 +775,8 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
     bl_idname = "UV_PT_uv_arrange"
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'UI'
-    bl_category = "MaterialBaker"
-    bl_label ="rearranger"
+    bl_category = "Group Baker"
+    bl_label ="Atlas Creator"
     
 
     #bl_options = {'DEFAULT_CLOSED'}
@@ -794,7 +809,16 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         row = layout.row()
         row.prop(rsettings,"uv_name",text="new uv-name")
         row = layout.row()
-        row.prop(rsettings,"uv_pack_multimaterial",text="pack multi-materials on one uv-slot")
+        row.prop(rsettings,"uv_split_multimaterial",text="separate multi-material uvmaps")
+        if not rsettings.uv_split_multimaterial:
+            row = layout.row()
+            row.enabled=False
+            row.label(text="(e.g. if uvmaps are colliding)")
+        else:
+            row = layout.row()
+            row.label(icon="DECORATE")
+            row.prop(rsettings,"uv_pack_multimaterial",text="pack multi-materials on one uv-slot")
+
         row = layout.row()
         row.prop(rsettings,"uv_name_overwrite",text="overwrite uv with same name?")
         row = layout.row()
