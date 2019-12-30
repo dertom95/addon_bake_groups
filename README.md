@@ -16,7 +16,7 @@ In order to render your material to textures you obviously need:
 ![bakegroupspanel](img/02_scene_props.png)  
   
 2 = Create 'bake group'  
-3 = process all(!) 'bake groups' and bake its textures  
+3 = process all(!) 'bake groups' and bake its textures (*blender will become unresponsive during the whole process! This might take a while. The only feedback can be seen in the console*) 
 1 = save the textures afterwards. **Caution:** The textures need to have a valid filepath (saved somewhere or loaded it from file)  
   
 ![bakegroupspanel](img/03_overview.png)  
@@ -28,7 +28,7 @@ Once you created a 'bake group' you can:
 5 = choose type of baking( 'DIFFUSE', 'ROUGHNESS', 'AO', 'SHADOW', 'NORMAL', 'UV', 'EMIT', 'ENVIRONMENT', 'COMBINED', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE' )  
 6 = choose the image this bake-command should bake to 
 7 = show influence-options (if bake-type has any)  
-8 = bake this group only  
+8 = bake this group only (*blender will become unresponsive during the whole process! This might take a while. The only feedback can be seen in the console*)  
 9 = hide/show all the details   
   
 If using multiple materials that intersect their uvmaps or using multiple objects to build a atlas-map you can use the 'atlas creator'. You can find it in the uveditor's sidebar (toggle with 'n'-key)
