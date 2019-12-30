@@ -40,7 +40,8 @@ If using multiple materials that intersect their uvmaps or using multiple object
 4 = remove uvmaps with the same name before (re)generating a new one  
 5 = automatically set 'bake uv-map' for each object in the bake-group to the new one
 'Create UVMap' = Generates the new uvmap and shows it immediately  
-
+  
+VIDEO:  
 [Small video overview how to use the plugin](https://www.youtube.com/watch?v=OiZdR0Z24b8&feature=youtu.be)
 
 
