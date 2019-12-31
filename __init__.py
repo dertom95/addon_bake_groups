@@ -140,6 +140,7 @@ class AtlasGroupItem(bpy.types.PropertyGroup):
     atlas_uv : bpy.props.EnumProperty(items=AtlasGroupItemUVCallback, description="UVMap used for baking")
 
 class AtlasGroupBakeItem(bpy.types.PropertyGroup):
+    active : bpy.props.BoolProperty(default=True)
     bake_type : bpy.props.EnumProperty(items=bake_types)
     image : bpy.props.PointerProperty(type=bpy.types.Image)
     bake_settings : bpy.props.PointerProperty(type=AtlasGroupBakeItemSettings)
@@ -401,6 +402,10 @@ class BakeAll(bpy.types.Operator):
                 print("no image for bake_type:%s" % bake_item.bake_type)
                 continue
 
+            if not bake_item.active:
+                print("ignore deactivted bake-pass:%s" % bake_item.bake_type)
+                continue
+
             # set the texture to all temp-imageTexNodes
             for imgTexNode in created_nodes:
                 imgTexNode.image = bake_item.image
@@ -512,11 +517,16 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 bake_item_idx=0
                 for bake_item in atlas_group.bake_items:
                     row = box.row()
-                    row.prop(bake_item,"bake_type",text="bake type")
+                    row.prop(bake_item,"active",text="")
+                    col = row.column()
+                    col.enabled=bake_item.active
+                    col.prop(bake_item,"bake_type",text="bake type")
+                    col = row.column()
+                    col.enabled=bake_item.active
                     if bake_item.image:
-                        row.prop(bake_item,"image")
+                        col.prop(bake_item,"image")
                     else:
-                        row.prop(bake_item,"image",icon="ERROR")
+                        col.prop(bake_item,"image",icon="ERROR")
 
                     bsettings = bake_item.bake_settings
 
@@ -528,9 +538,13 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                     else:
                         col.prop(settings,"negative_bool",text="",toggle=True)
                         col.enabled=False
+                    col.enabled=bake_item.active
+
 
                     if bsettings.show_settings:
                         col = box.column()
+                        col.enabled=bake_item.active
+
                         if bake_item.bake_type in {'DIFFUSE', 'GLOSSY', 'TRANSMISSION', 'SUBSURFACE'}:
                             row = col.row(align=True)
                             row.use_property_split = False
