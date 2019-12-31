@@ -300,7 +300,6 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE(bpy.types.Operator):
         atlasGroupList = context.scene.world.atlasSettings.atlas_groups
 
         atlasGroupList.remove(self.index)
-        context.active_object.list_index_userdata = min(max(0, self.index - 1), len(atlasGroupList) - 1)
         return{'FINISHED'}
 
 
