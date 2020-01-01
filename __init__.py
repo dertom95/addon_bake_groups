@@ -436,9 +436,18 @@ class BakeAll(bpy.types.Operator):
 
             # bake
             print("bake %s" % bake_item.bake_type)
+
+            # force switch to cycles render engine
+            backup_renderengine = bpy.context.scene.render.engine
+            bpy.context.scene.render.engine="CYCLES"
+
             bpy.ops.object.bake(type=bake_item.bake_type)
             if atlas_settings.saveimage_after_bake and bake_item.image.filepath:
                 bake_item.image.save()
+
+            # switch back to the renderengine that was set before the bake-process
+            bpy.context.scene.render.engine=backup_renderengine
+
 
 
         # cleanup
