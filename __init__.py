@@ -273,6 +273,28 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE(bpy.types.Operator):
 ########
 # groups
 ########
+
+class UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATEFROMSELECTED(bpy.types.Operator):
+    """Add a new item to the list."""
+
+    bl_idname = "simpleatlas.create_group_from_selection"
+    bl_label = "Create by Selection"
+
+    @classmethod
+    def poll(cls, context):
+        return len(bpy.context.selected_objects) > 0
+
+    def execute(self, context):
+        newgrp = context.scene.world.atlasSettings.atlas_groups.add()
+        for obj in bpy.context.selected_objects:
+            newitem = newgrp.atlas_items.add()
+            newitem.obj = obj
+        # add a fist atlas-item on group-creation
+        newgrp.bake_items.add()
+        return{'FINISHED'}
+
+
+
 class UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE(bpy.types.Operator):
     """Add a new item to the list."""
 
@@ -459,7 +481,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
     
     @classmethod
     def poll(cls, context):
-        return bpy.context.scene.render.engine=="CYCLES"
+        return bpy.context.scene.render.engine=="CYCLES" or bpy.context.scene.render.engine=="URHO3D"
 
     # Draw the export panel
     def draw(self, context):
@@ -599,6 +621,7 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
         row = box.row()
 
         row.operator('simpleatlas.create_group', text='new bake group',icon="MONKEY")
+        row.operator('simpleatlas.create_group_from_selection', text='Create by selection',icon="MONKEY")
 
         row = box.row()
         bakeop = row.operator('simpleatlas.bake',text="bake all groups",icon="IMAGE")
@@ -868,7 +891,7 @@ classes =(RearrangeSettings, AtlasGroupBakeItemSettings,AtlasGroupBakeItem,Atlas
             # bake item
             ,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPBAKEITEM_DELETE
             # group
-            ,UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_MOVE
+            ,UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_DELETE,UL_SIMPLEATLAS_LIST_ATLASGROUPS_MOVE, UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATEFROMSELECTED
             # scene panel
             ,SimpleAtlasRenderUI,BakeAll
             # uv arranger
