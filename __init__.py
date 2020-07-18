@@ -110,7 +110,7 @@ def set_bakesettings(settings):
 uv_process_mode_items = [
     ("RENDERUV","Render-UVs as base","Use Render-UV as base",1),
     ("SMART","Remap->Smart UV","Use smart uv project on all atlas objects",2),
-    #("MAT2UV","MAT2UV","Every Material gets only one small chunk of uv. Makes only sense for non textured simple materials",3),
+    ("MAT2UV","MAT2UV","Every Material gets only one small chunk of uv. Makes only sense for non textured simple materials",3),
 ]
 
 class RearrangeSettings(bpy.types.PropertyGroup):
@@ -167,6 +167,7 @@ class AtlasGroup(bpy.types.PropertyGroup):
     selection_idx : bpy.props.IntProperty()
     bake_selection_idx : bpy.props.IntProperty()
     uv_rearrange_settings : bpy.props.PointerProperty(type=RearrangeSettings)
+    bake_margin_px : bpy.props.IntProperty(name="Bake Margin",description="Extend the baked result",min=0,max=64,default=1)
 
 
 class AtlasData(bpy.types.PropertyGroup):
@@ -301,6 +302,8 @@ class UL_SIMPLEATLAS_LIST_ATLASGROUPS_CREATEFROMSELECTED(bpy.types.Operator):
     def execute(self, context):
         newgrp = context.scene.world.atlasSettings.atlas_groups.add()
         for obj in bpy.context.selected_objects:
+            if not obj or obj.type!="MESH":
+                continue
             newitem = newgrp.atlas_items.add()
             newitem.obj = obj
         # add a fist atlas-item on group-creation
@@ -379,6 +382,10 @@ class BakeAll(bpy.types.Operator):
         return True
 
     def bake(self,context,atlasgroup):
+        before_bake_margin = context.scene.render.bake.margin
+        before_selected_objects = bpy.context.selected_objects
+        #before_object_mode = context.object.mode      // why is context.object.mode here not available?
+
         atlas_settings = context.scene.world.atlasSettings
 
         if len(atlasgroup.bake_items)==0:
@@ -390,13 +397,28 @@ class BakeAll(bpy.types.Operator):
 
         created_nodes = []
         
+        bpy.context.scene.render.bake.margin = atlasgroup.bake_margin_px
+
         # force object mode
         bpy.ops.object.mode_set(mode="OBJECT",toggle=False)        
         # deselect all objects
         bpy.ops.object.select_all(action='DESELECT')
 
+
+        filter_objects = None
+
+        if atlasgroup.uv_rearrange_settings.uv_rearrange_mode!="MAT2UV":
+            mat2mesh = GetMaterial2Mesh(rsettings,atlasgroup)
+            filter_objects = []
+            for mdata in mat2mesh:
+                first_elem = next(iter(mdata.obj2matIdx.keys()))
+                filter_objects.append(first_elem)
+
         for item in atlasgroup.atlas_items:
             if not item.obj:
+                continue
+
+            if filter_objects and item.obj not in filter_objects:
                 continue
 
             if not item.atlas_uv or len(item.obj.data.uv_layers)==0:
@@ -414,6 +436,9 @@ class BakeAll(bpy.types.Operator):
                     continue
 
                 mat = mat_slot.material
+                
+                if not mat:
+                    continue
 
                 handled_materials.append(mat)
                 nodes = mat.node_tree.nodes
@@ -426,6 +451,7 @@ class BakeAll(bpy.types.Operator):
                 
                 nodes.active=imageTexNode
                 created_nodes.append(imageTexNode)
+                    
 
         if self.only_select:
             # we only want to select all objects and its bake-uvs
@@ -459,8 +485,8 @@ class BakeAll(bpy.types.Operator):
             if atlas_settings.saveimage_after_bake and bake_item.image.filepath:
                 bake_item.image.save()
 
-            # switch back to the renderengine that was set before the bake-process
-            bpy.context.scene.render.engine=backup_renderengine
+        # switch back to the renderengine that was set before the bake-process
+        bpy.context.scene.render.engine=backup_renderengine
 
 
 
@@ -473,6 +499,16 @@ class BakeAll(bpy.types.Operator):
         handled_materials.clear()
         created_nodes.clear()
 
+        bpy.context.scene.render.bake.margin = before_bake_margin
+        # select all objects that where selected before
+        bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
+        bpy.ops.object.select_all(action='DESELECT')
+        for item in before_selected_objects:
+            bpy.context.view_layer.objects.active = item   # Make the current obj the active object 
+            item.select_set(state=True)     
+        
+        # set mode
+        #bpy.ops.object.mode_set ( mode = before_object_mode )
 
 
     def execute(self, context):
@@ -525,15 +561,16 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 row = box.row()
                 row.label(text=atlas_group.name)
 
+
+            bakeop = row.operator('simpleatlas.bake',text="bake")
+            bakeop.atlasid=idx
+            bakeop.only_select=False
+
             row.prop(atlas_group,"show_details",text="details")
 
             bakeop = row.operator('simpleatlas.bake',text="select")
             bakeop.atlasid=idx
             bakeop.only_select=True
-
-            bakeop = row.operator('simpleatlas.bake',text="bake")
-            bakeop.atlasid=idx
-            bakeop.only_select=False
 
             op = row.operator('simpleatlas.move_group',text="",icon="TRIA_UP")
             op.direction='UP'
@@ -546,6 +583,8 @@ class SimpleAtlasRenderUI(bpy.types.Panel):
                 op = row.operator('simpleatlas.delete_group', text='',icon="X")
                 op.index=idx
 
+            row = box.row()
+            row.prop(atlas_group,"bake_margin_px")
 
             if atlas_group.show_details:
                 row = box.row()
@@ -662,11 +701,72 @@ def get_uv_index(mesh,uv):
 ###################################################
 # (Re)arrange uvs
 ###################################################
+class Mat2UVMaterialSlot:
+    def __init__(self,slot_nr):
+        self.slot_nr = slot_nr
+        self.slot_nr = 0
+        self.obj2matIdx = {} # maps the object's mat-id for this slot
+        self.uv_x = 0
+        self.uv_y = 0        
+
+def create_new_uv(rsettings,item):
+    if (rsettings.uv_name_overwrite):
+            # check if we already got an uvmap with that name => remove it
+        for uvmap in item.obj.data.uv_layers:
+            if uvmap.name == rsettings.uv_name:
+                item.obj.data.uv_layers.remove(uvmap)
+
+    # get render UV
+    renderUV = GetRenderUV(item.obj.data)
+    # select render UV
+    item.obj.data.uv_layers.active = renderUV
+    # copy render UV
+    newuv = item.obj.data.uv_layers.new()
+    # select new UV to make it the one we manipulate
+    item.obj.data.uv_layers.active = newuv
+
+    if rsettings.uv_autoset_bakeuv:
+        uv_idx = get_uv_index(item.obj.data,newuv)
+        print ("autoset bakeuv:%s" % uv_idx)
+        if uv_idx:
+            item.atlas_uv = str(uv_idx)
+    print("1")
+    newuv.name=rsettings.uv_name
+
+
+def GetMaterial2Mesh(rsettings,atlas_grp,create_uv_map=True):
+    material_2_mesh={} # key: material value: list of meshes using those
+    # retrieve valid items
+    valid_items = []
+    for item in atlas_grp.atlas_items:
+        if not item.obj or item.obj.type!="MESH":
+            continue
+
+        if create_uv_map:
+            create_new_uv(rsettings,item)
+
+        user_mat_idxs = used_material_indices(item.obj.data)
+        material_slots = item.obj.material_slots
+        for slot_idx in user_mat_idxs:
+            material = material_slots[slot_idx].material
+            if material:
+                if material not in material_2_mesh:
+                    print("new entry:%s"%material.name)
+                    material_2_mesh[material]=Mat2UVMaterialSlot(len(material_2_mesh))
+                material_2_mesh[material].obj2matIdx[item.obj]=slot_idx
+                print("%s: obj2matid %s %s" % (material.name,item.obj.name,slot_idx))
+
+    return material_2_mesh
+
+
 class Rearrange(bpy.types.Operator):
     """automatically arrange uvs"""
 
     bl_idname = "simpleatlas.uv_arrange"
     bl_label = "Create UVMap"
+
+    mat2uv_shrink : bpy.props.BoolProperty(default=False)
+
 
 
     def execute(self, context):
@@ -679,17 +779,23 @@ class Rearrange(bpy.types.Operator):
 
 
         rsettings = atlas_grp.uv_rearrange_settings
-
+        space_data = context.space_data
 
         before_selected_objects = bpy.context.selected_objects
         before_object_mode = bpy.context.object.mode
+        before_uv_pivort_point = space_data.pivot_point
 
         if rsettings.uv_rearrange_mode=="SMART":
+            ################
+            ## smart project
+            ################
+
             bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
             # deselect all objects
             bpy.ops.object.select_all(action='DESELECT')
 
             for item in atlas_grp.atlas_items:
+                self.create_new_uv(rsettings,item)
                 bpy.context.view_layer.objects.active = item.obj   # Make the current obj the active object 
                 item.obj.select_set(state=True)                
 
@@ -702,7 +808,86 @@ class Rearrange(bpy.types.Operator):
 
             # to object mode
             bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
+        elif rsettings.uv_rearrange_mode=="MAT2UV":
+            print("\n")
+            ###################
+            ## MAT2UV
+            ###################
+
+            material_2_mesh = GetMaterial2Mesh(rsettings,atlas_grp)
+
+            slot_amount = len(material_2_mesh)
+            print("\nmaterial amount: %s" % slot_amount)
+
+            bpy.context.space_data.pivot_point = 'CURSOR'
+
+            elems_per_row = math.ceil(math.sqrt(slot_amount))
+            rows = math.ceil(slot_amount / elems_per_row)
+            margin = 0.1 # TODO: expose as option
+            print("material-atlas: row-size: %s  row-amount: %s" % (elems_per_row,rows))
+
+
+            slot_width = ( 0.99 / elems_per_row)
+            slot_height = ( 0.99 / rows)
+            print("slot: width:%s height:%s" % (slot_width,slot_height))
+            scale = slot_width * (1-margin)
+            current_uv_x = 0.01
+            current_uv_y = 0.01
+
+            ## select all objects and go to edit-mode
+            bpy.ops.object.mode_set(mode="OBJECT",toggle=False)
+            # deselect all objects
+            bpy.ops.object.select_all(action='DESELECT')
+
+            for item in atlas_grp.atlas_items:
+                bpy.context.view_layer.objects.active = item.obj   # Make the current obj the active object 
+                item.obj.select_set(state=True)
+
+            bpy.ops.object.mode_set(mode="EDIT",toggle=False)            
+            ## all atlas-objects are selected now and in edit-mode
+            
+            for mat in material_2_mesh:
+                bpy.ops.uv.cursor_set(location=(current_uv_x,current_uv_y))
+                bpy.ops.mesh.select_all(action='DESELECT') # deselect all vertices
+
+                print("\t%s" % mat.name)
+                # calcualte lower-left uv-position for this slot
+                mat_data = material_2_mesh[mat]
+
+                # iterate over all objects that do have this material assigned and select those vertices
+                for obj in mat_data.obj2matIdx:
+                    bpy.context.view_layer.objects.active = obj   # Make the current obj the active object 
+                    obj.select_set(state=True)
+                    mat_idx = mat_data.obj2matIdx[obj]
+                    print("\t\t%s : %s" %(obj.name,mat_idx))
+                    obj.active_material_index = mat_idx
+                    bpy.ops.object.material_slot_select()
+                    bpy.ops.uv.reset() # reset uv => all uv-maps become a triangle
+
+
+                bpy.ops.uv.select_all(action='SELECT')
+                
+                bpy.ops.transform.translate(value=(current_uv_x, current_uv_y, 0), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+                bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+
+                if self.mat2uv_shrink:
+                    bpy.ops.uv.cursor_set(location=(current_uv_x+slot_width*0.75,current_uv_y+slot_height*0.25))
+                    bpy.ops.transform.resize(value=(scale, scale, scale), orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+
+                current_uv_x = current_uv_x + slot_width
+                if current_uv_x >= 0.98:
+                    current_uv_x = 0.01
+                    current_uv_y = current_uv_y + slot_height
+
+
+
+
+
+
         elif rsettings.uv_rearrange_mode=="RENDERUV":
+            ###################
+            ## RenderUV-as-base
+            ###################
             pack_multi_material = rsettings.uv_pack_multimaterial
 
             # amout of uv-slots to be used for the newly atlas
@@ -761,28 +946,8 @@ class Rearrange(bpy.types.Operator):
                 bpy.context.view_layer.objects.active = item.obj   # Make the current obj the active object 
                 item.obj.select_set(state=True)
 
-                if (rsettings.uv_name_overwrite):
-                    # check if we already got an uvmap with that name => remove it
-                    for uvmap in item.obj.data.uv_layers:
-                        if uvmap.name == rsettings.uv_name:
-                            item.obj.data.uv_layers.remove(uvmap)
+                self.create_new_uv(rsettings,item)
 
-                # get render UV
-                renderUV = GetRenderUV(item.obj.data)
-                # select render UV
-                item.obj.data.uv_layers.active = renderUV
-                # copy render UV
-                newuv = item.obj.data.uv_layers.new()
-                # select new UV to make it the one we manipulate
-                item.obj.data.uv_layers.active = newuv
-
-                if rsettings.uv_autoset_bakeuv:
-                    uv_idx = get_uv_index(item.obj.data,newuv)
-                    print ("autoset bakeuv:%s" % uv_idx)
-                    if uv_idx:
-                        item.atlas_uv = str(uv_idx)
-                print("1")
-                newuv.name=rsettings.uv_name
 
                 #bpy.ops.mesh.select_all(action='SELECT')
 
@@ -801,11 +966,6 @@ class Rearrange(bpy.types.Operator):
                     # select all faces
                     bpy.ops.object.material_slot_select()
                     
-                    smart_project = True
-                    if smart_project:
-                        #bpy.ops.uv.smart_project()
-                        bpy.ops.uv.reset()
-
                     # and select them in the uv-editor
                     bpy.ops.uv.select_all(action='SELECT')
 
@@ -844,8 +1004,6 @@ class Rearrange(bpy.types.Operator):
                         # one pass is enough if you do not split the multimaterials
                         break
 
-            # deselect obj
-            print("TRY TO SELECT %s" %atlas_grp_idx)
             bpy.ops.simpleatlas.bake(atlasid=atlas_grp_idx,only_select=True)
             bpy.ops.object.mode_set(mode="OBJECT",toggle=True)            
 
@@ -862,7 +1020,7 @@ class Rearrange(bpy.types.Operator):
         
         # set mode
         bpy.ops.object.mode_set ( mode = before_object_mode )
-
+        space_data.pivot_point = before_uv_pivort_point
         return{'FINISHED'}
     
 
@@ -912,11 +1070,15 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
         row.prop(rsettings,"uv_name",text="new uv-name")
 
         row = layout.row()
+        row.prop(rsettings,"uv_name_overwrite",text="overwrite uv with same name?")
+        row = layout.row()
+        row.prop(rsettings,"uv_autoset_bakeuv",text="set new uv as bake-uv in bake group")
+
+        row = layout.row()
         box = row.box()
 
         row = box.row()
         row.prop(rsettings,"uv_rearrange_mode")
-
 
         # RENDER-UV as base
         if rsettings.uv_rearrange_mode=="RENDERUV":
@@ -930,14 +1092,6 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
                 row = box.row()
                 row.label(icon="DECORATE")
                 row.prop(rsettings,"uv_pack_multimaterial",text="pack multi-materials on one uv-slot")
-
-            row = box.row()
-            row.prop(rsettings,"uv_name_overwrite",text="overwrite uv with same name?")
-            row = box.row()
-            row.prop(rsettings,"uv_autoset_bakeuv",text="set new uv as bake-uv in bake group")
-
-            row = box.row()
-
 
             row = box.row()
             if not rsettings.uv_name or rsettings.uv_name=="":
@@ -959,6 +1113,10 @@ class SimpleAtlasUVArrange(bpy.types.Panel):
             row.prop(rsettings,"uv_smart_stretch_to_bound")
             row = box.row()
             row.operator("simpleatlas.uv_arrange")
+        elif rsettings.uv_rearrange_mode=="MAT2UV":
+            row = box.row()
+            row.operator("simpleatlas.uv_arrange").mat2uv_shrink=False
+            row.operator("simpleatlas.uv_arrange",text="shrink").mat2uv_shrink=True
 
         sima = context.space_data
 
